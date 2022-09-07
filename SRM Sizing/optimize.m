@@ -1,13 +1,12 @@
-%[length, width, inner_width, final_simulation, mass, deltaVWorking, massWorking, diameterWorking, lengthWorking, inradWorking] = optimize(1, 4000, 1.5, 3447378.64659, 'circular', 0.077, 5, 10407, 2.22, ["HTPB"], [298], [920], [1], ["NH4CLO4(I)", "AL"], [298, 200], [1950,2710], [0.88, 0.12], 0.12, 2.75)
+%[length, width, inner_width, final_simulation, mass, deltaVWorking, massWorking, diameterWorking, lengthWorking, inradWorking] = optimize(1, 4000, 1.5, 3447378.64659, 'circular', 0.077, 5, 10407, 2.22, ["HTPB"], [298], [920], [1], ["NH4CLO4(I)", "AL"], [298, 200], [1950,2710], [0.88, 0.12], 0.12, 2.75, 187.147)
 
-%add max q function that takes an array of dynamic pressures
 %% solid rocket motor sizing code
 function [length, width, inner_width, final_simulation, mass, ...
     deltaVWorking, massWorking, diameterWorking, lengthWorking, ...
     inradWorking] = optimize(dt, delta_V, TWR, ...
     maxPres, shape, f_inert, payloadMass, atmoPressure, ...
     OF, fuels, f_temps, f_densities, f_fracs, oxidizers, o_temps, ...
-    o_densities, o_fracs, diaU, lenU)
+    o_densities, o_fracs, diaU, lenU, startingalt)
     %% Inputs
     %dt: time step (s)
     % test
@@ -51,8 +50,8 @@ function [length, width, inner_width, final_simulation, mass, ...
     %upper length ?
     
     index = 0;
-    NewEntry = [0, 0, 0, 0, 0];
-    LoopResults = zeros(5,5);
+    NewEntry = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    LoopResults = zeros(9,9);
     for dia = linspace(diaL, diaU, max_iterations)
         inradU = (dia / 2) * 0.8;
         inradL = 0.03 * (dia / 2);
@@ -60,17 +59,24 @@ function [length, width, inner_width, final_simulation, mass, ...
             for inrad = linspace(inradL, inradU, max_iterations)
                 index = index + 1;
                 [T, W, P_c, Thrust, TWR, R_b, burn_time, M, Mdot, A_t, deltaV, specificImpulse, propMass, C_t, C_star] = Simulate_Reverse(dt, len, dia, inrad, maxPres, shape, f_inert, payloadMass, atmoPressure, OF, fuels, f_temps, f_densities, f_fracs, oxidizers, o_temps, o_densities, o_fracs);
-                NewEntry = [dia, len, inrad, M(1), deltaV];
+                %added altitude analysis here to account for altitude and
+                %dynamic pressure
+                [alt, drag, velocity, DP] = altitude_analysis(Thrust, M, dt, inrad * 2, startingalt);
+                NewEntry = [dia, len, inrad, M(1), deltaV, alt, DP];
                 LoopResults(index, :) = NewEntry;
                 fprintf('This is iteration #%0.0f.\n', index);
             end
         end
     end
     
-    %select best candidate based off the mass
+    %select best candidate based off the altitude, dynamic pressure, and
+    %mass
     
-    indexDW = LoopResults(:,5) > delta_V;
-    deltaVWorking = LoopResults(indexDW, 5);
+    %use altitude and dynamic pressure instead of deltaV
+    %indexDW = LoopResults(:,5) > delta_V; 
+    indexDW = find(LoopResults(:,6) > 3048 + startingalt & LoopResults(:,7) < (maxPres/1000));
+
+    %deltaVWorking = LoopResults(indexDW, 5);
     massWorking = LoopResults(indexDW,4);
     diameterWorking = LoopResults(indexDW, 1);
     lengthWorking = LoopResults(indexDW, 2);
